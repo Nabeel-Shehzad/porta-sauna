@@ -5,6 +5,25 @@ import 'dart:ui' as ui;
 class CustomMarkerHelper {
   static final Map<String, BitmapDescriptor> _markerCache = {};
 
+  // Commercial place types from database
+  static final List<String> _commercialTypes = [
+    "Swimming Pool / Lido",
+    "Outdoor Sports Centre",
+    "Wellness Retreat",
+    "Campsite",
+    "Farm / Vineyard"
+  ];
+
+  // Wild/Free place types from database
+  static final List<String> _wildTypes = [
+    "Beach",
+    "Riverside",
+    "Picnic Area",
+    "Secluded Park",
+    "Lake Side",
+    "Off-Road (4x4)"
+  ];
+
   static Future<BitmapDescriptor> createCustomMarker({
     required Color color,
     double size = 120,
@@ -57,7 +76,7 @@ class CustomMarkerHelper {
 
   static Future<BitmapDescriptor> getMarkerIcon(String? saunaType) async {
     // Convert saunaType to lowercase for case-insensitive comparison
-    final type = saunaType?.toLowerCase().trim() ?? '';
+    final type = saunaType?.trim() ?? '';
     print('Getting marker icon for sauna type: "$type"');
     
     // Check cache first
@@ -69,19 +88,13 @@ class CustomMarkerHelper {
     // Create marker based on type
     BitmapDescriptor marker;
     
-    // Commercial/Paid variations (BLUE)
-    if (type.contains('commercial') || 
-        type.contains('paid') ||
-        type.contains('business') ||
-        type.contains('private')) {
+    // Commercial places (BLUE)
+    if (_commercialTypes.contains(type)) {
       print('Creating BLUE marker for commercial type: $type');
       marker = await createCustomMarker(color: Colors.blue);
     }
-    // Free/Wild variations (GREEN)
-    else if (type.contains('free') || 
-             type.contains('wild') ||
-             type.contains('public') ||
-             type.contains('nature')) {
+    // Wild/Free places (GREEN)
+    else if (_wildTypes.contains(type)) {
       print('Creating GREEN marker for free/wild type: $type');
       marker = await createCustomMarker(color: Colors.green);
     }
