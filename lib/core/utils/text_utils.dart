@@ -3,11 +3,17 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:portasauna/core/theme/pallete.dart';
 
 class TextUtils {
-  static TextStyle? small1(
-      {color, required BuildContext context, fontWeight, fontSize}) {
+  static TextStyle? small1({
+    Color? color,
+    required BuildContext context,
+    FontWeight? fontWeight,
+    double? fontSize,
+    TextDecoration? decoration = TextDecoration.none,
+  }) {
     return Theme.of(context).textTheme.bodySmall?.copyWith(
         fontSize: fontSize ?? 17.h,
         fontWeight: fontWeight ?? FontWeight.normal,
+        decoration: decoration,
         color: color ?? Pallete.whiteColor);
   }
 

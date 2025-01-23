@@ -82,9 +82,9 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
               const DiscoverPageButtons(),
 
               //=================================
-              // Horizontal card
+              // Bottom card for selected sauna
               //=================================
-              if (mc.showHorizontalCard)
+              if (mc.selectedSauna != null)
                 Positioned(
                   left: 0,
                   right: 0,
@@ -95,53 +95,47 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
                       clipBehavior: Clip.none,
                       children: [
                         //=================================
-                        // Horizontal card
+                        // Sauna card
                         //=================================
-                        ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          shrinkWrap: true,
-                          clipBehavior: Clip.none,
-                          itemCount: mc.placesList.length,
-                          itemBuilder: (_, i) {
-                            return InkWell(
-                              onTap: () {
-                                Get.find<FindNearSaunaController>()
-                                    .setSelectedSaunaPlace(mc.placesList[i]);
-                                Get.to(const SaunaPlaceDetailsPage());
-                              },
-                              child: MapPlaceCard(
-                                imgLink:
-                                    getLocationImage(mc.placesList[i].imgLinks),
-                                title: mc.placesList[i].address ?? '-',
-                                subTitle: mc.placesList[i].description ?? '',
-                                cardWidth: mc.placesList.length == 1
-                                    ? Get.width - 50.w
-                                    : 280.w,
-                              ),
-                            );
+                        InkWell(
+                          onTap: () {
+                            Get.find<FindNearSaunaController>()
+                                .setSelectedSaunaPlace(mc.selectedSauna!);
+                            Get.to(const SaunaPlaceDetailsPage());
                           },
+                          child: MapPlaceCard(
+                            imgLink: getLocationImage(mc.selectedSauna!.imgLinks),
+                            title: mc.selectedSauna!.selectedWildType != null && 
+                                   mc.selectedSauna!.selectedWildType!.isNotEmpty ?
+                              "Free Sauna Spot | ${mc.selectedSauna!.selectedWildType!.first}" :
+                              "Commercial | ${mc.selectedSauna!.selectedCommercialType?.first ?? ''}",
+                            subTitle: mc.selectedSauna!.description ?? '',
+                            distance: mc.selectedSauna!.distance,
+                            cardWidth: Get.width - 50.w,
+                          ),
                         ),
 
                         //=================================
                         // Close button
                         //=================================
                         Positioned(
-                            right: 10.w,
-                            top: 0.h,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: radius(100),
-                                  boxShadow: [bigShadowTwo]),
-                              child: IconButton(
-                                  onPressed: () {
-                                    mc.setShowHorizontalCard(false);
-                                  },
-                                  icon: const Icon(
-                                    Icons.close,
-                                    color: Colors.black,
-                                  )),
-                            )),
+                          right: 10.w,
+                          top: 0.h,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: radius(100),
+                              boxShadow: [bigShadowTwo]
+                            ),
+                            child: IconButton(
+                              onPressed: () => mc.hideBottomCard(),
+                              icon: const Icon(
+                                Icons.close,
+                                color: Colors.black,
+                              )
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),

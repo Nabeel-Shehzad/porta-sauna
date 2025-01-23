@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:portasauna/core/theme/pallete.dart';
 import 'package:portasauna/core/utils/ui_const.dart';
 import 'package:portasauna/core/widgets/show_snackbar.dart';
@@ -50,26 +51,38 @@ class DiscoverPageButtons extends StatelessWidget {
             //=================================
             IconButton(
                 onPressed: () async {
-                  await Get.find<FindNearSaunaController>()
-                      .getUserCurrentPosition(context);
-
-                  mc.animateCameraToNewPosition(
-                      lat: mc.selectedPlaceLatLong?.lat,
-                      long: mc.selectedPlaceLatLong?.lng);
-                  mc.getSaunaPlacesOnMap(context);
+                  final mc = Get.find<MapController>();
+                  final position = await mc.getCurrentLocation();
+                  if (position != null) {
+                    await mc.moveCamera(
+                      LatLng(position.latitude, position.longitude),
+                      zoom: 15,
+                    );
+                    // Add current location marker
+                    mc.addCurrentPlaceMarker(
+                      lat: position.latitude,
+                      long: position.longitude,
+                      title: 'Your Location',
+                    );
+                  } else {
+                    showSnackBar(context, 'Could not get current location', Colors.red);
+                  }
                 },
                 icon: Container(
                   padding: EdgeInsets.all(19.sp),
                   decoration: BoxDecoration(
-                      boxShadow: [bigShadow],
-                      color: Pallete.whiteColor,
-                      borderRadius: BorderRadius.circular(100)),
+                    boxShadow: [bigShadow],
+                    color: Pallete.whiteColor,
+                    borderRadius: BorderRadius.circular(100),
+                  ),
                   child: Icon(
                     Icons.gps_fixed,
                     color: Colors.grey[800],
                     size: 25.h,
                   ),
-                )),
+                ),
+              ),
+
             gapH(12),
 
             //=================================

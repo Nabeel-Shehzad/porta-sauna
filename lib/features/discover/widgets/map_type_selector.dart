@@ -53,38 +53,32 @@ class _MapTypeSelectorState extends State<MapTypeSelector>
     return GetBuilder<MapController>(
       builder: (mc) {
         return Positioned(
-          top: 180.h,
-          right: 50.w,
+          top: 135.h,  
+          right: 25.w, 
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
                 decoration: BoxDecoration(
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.2),
-                      spreadRadius: 2,
-                      blurRadius: 5,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(7),
                 ),
                 child: Material(
-                  elevation: 4,
-                  borderRadius: BorderRadius.circular(24),
-                  color: Colors.white,
+                  elevation: 0,
+                  color: Colors.transparent,
                   child: InkWell(
                     onTap: _toggleExpanded,
-                    borderRadius: BorderRadius.circular(24),
+                    borderRadius: BorderRadius.circular(7),
                     child: Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 16.w,
-                        vertical: 12.h,
+                      padding: EdgeInsets.all(12.h),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(7),
                       ),
                       child: Icon(
                         Icons.layers,
-                        size: 20.sp,
-                        color: Pallete.primarColor,
+                        size: 24.h,
+                        color: Colors.grey[800],
                       ),
                     ),
                   ),
@@ -92,43 +86,34 @@ class _MapTypeSelectorState extends State<MapTypeSelector>
               ),
               if (_isExpanded)
                 Container(
-                  margin: EdgeInsets.only(top: 8.h),
+                  margin: EdgeInsets.only(top: 4.h),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(8),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
-                        spreadRadius: 2,
-                        blurRadius: 5,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
+                    borderRadius: BorderRadius.circular(7),
                   ),
                   child: Column(
-                    mainAxisSize: MainAxisSize.min,
                     children: [
                       _MapTypeButton(
                         title: 'Standard',
+                        isSelected: mc.currentMapType == MapType.normal,
                         onTap: () {
-                          Get.find<MapController>().setMapType(MapType.normal);
+                          mc.setMapType(MapType.normal);
                           _toggleExpanded();
                         },
                       ),
-                      const Divider(height: 1),
                       _MapTypeButton(
                         title: 'Satellite',
+                        isSelected: mc.currentMapType == MapType.satellite,
                         onTap: () {
-                          Get.find<MapController>()
-                              .setMapType(MapType.satellite);
+                          mc.setMapType(MapType.satellite);
                           _toggleExpanded();
                         },
                       ),
-                      const Divider(height: 1),
                       _MapTypeButton(
                         title: 'Terrain',
+                        isSelected: mc.currentMapType == MapType.terrain,
                         onTap: () {
-                          Get.find<MapController>().setMapType(MapType.terrain);
+                          mc.setMapType(MapType.terrain);
                           _toggleExpanded();
                         },
                       ),
@@ -145,10 +130,12 @@ class _MapTypeSelectorState extends State<MapTypeSelector>
 
 class _MapTypeButton extends StatelessWidget {
   final String title;
+  final bool isSelected;
   final VoidCallback onTap;
 
   const _MapTypeButton({
     required this.title,
+    required this.isSelected,
     required this.onTap,
   });
 
@@ -168,7 +155,7 @@ class _MapTypeButton extends StatelessWidget {
             title,
             style: TextStyle(
               fontSize: 16.sp,
-              color: Colors.black87,
+              color: isSelected ? Colors.blue : Colors.black87,
               fontWeight: FontWeight.w500,
             ),
             textAlign: TextAlign.center,

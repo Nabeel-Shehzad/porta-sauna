@@ -100,22 +100,17 @@ class FindNearSaunaController extends GetxController {
 
   Future getNearestSaunaLocation(BuildContext context) async {
     try {
+      print('🔍 Starting to find nearest saunas...');
       setLoadingTrue();
       nearestSaunas.clear();
       final position = await getUserCurrentPosition(context);
-
-      //we need viewport to load place within the viewport
-      //but user's current location is not giving us viewport,only lat long
-      //so need to get place name from lat long and then,
-      //from that place name we will call an api which will give us viewport
+      print('📍 Got user position: ${position.latitude}, ${position.longitude}');
 
       //get place name from user's current location lat long
-      //also get country name, because we want to load all location
-      //of user's country
       final data = await Get.find<MapPlaceController>().getAddressFromLatLong(
           lat: position.latitude, long: position.longitude);
+      print('📌 Got address data: $data');
       final placeData = AddressFromLatLongModel.fromJson(data);
-      // final formattedAddress = placeData.results[0].formattedAddress ?? '';
 
       //load all location of user's country
       String? countryName;
@@ -123,17 +118,22 @@ class FindNearSaunaController extends GetxController {
         if (placeData.results[0].addressComponents[i].types
             .contains('country')) {
           countryName = placeData.results[0].addressComponents[i].longName;
+          print('🌍 Found country: $countryName');
         }
       }
 
       //move camera to user's current country
       final mapc = Get.find<MapController>();
-      await mapc.moveCameraToPlace(context,
-          placeName: countryName, animateCamera: false);
+      await mapc.moveCameraToPlace(
+        context,
+        placeName: countryName ?? '',
+        animateCamera: false
+      );
 
       final countryData = await Get.find<MapPlaceController>()
           .getLatLongFromPlaceName(placeName: countryName ?? '');
       final userCountryLatLong = LatLongFromPlaceModel.fromJson(countryData);
+      print('🗺️ Got country bounds data: $countryData');
 
       final minLongitude =
           userCountryLatLong.results[0].geometry?.viewport?.southwest?.lng;
@@ -143,45 +143,93 @@ class FindNearSaunaController extends GetxController {
           userCountryLatLong.results[0].geometry?.viewport?.northeast?.lng;
       final maxLatitude =
           userCountryLatLong.results[0].geometry?.viewport?.northeast?.lat;
+      
+      print('📊 Search bounds: Lat($minLatitude to $maxLatitude), Long($minLongitude to $maxLongitude)');
+      
       List response;
+      try {
+        response = await dbClient
+            .from('sauna_locations')
+            .select('''
+              id,
+              created_at,
+              latitude,
+              longitude,
+              wild_location,
+              commercial_location,
+              nearby_service,
+              nearby_activity,
+              description,
+              img_links,
+              user_id,
+              address,
+              is_approved,
+              zip_code,
+              commercial_phone,
+              checked_in_users
+            ''')
+            .gte('latitude', minLatitude?.floor() ?? 0)
+            .lte('latitude', maxLatitude?.ceil() ?? 0)
+            .gte('longitude', minLongitude?.floor() ?? 0)
+            .lte('longitude', maxLongitude?.ceil() ?? 0)
+            .eq('is_approved', true);
 
-      response = await dbClient
-          .from('sauna_locations')
-          .select()
-          .gte('latitude', minLatitude?.floor() ?? 0)
-          .lte('latitude', maxLatitude?.ceil() ?? 0)
-          .gte('longitude', minLongitude?.floor() ?? 0)
-          .lte('longitude', maxLongitude?.ceil() ?? 0)
-          .eq('is_approved', true);
+        print('🔍 Database query successful. Found ${response.length} saunas');
+        print('📍 First sauna data (if any): ${response.isNotEmpty ? response.first : 'No saunas found'}');
+      } catch (e) {
+        print('❌ Database query error: $e');
+        rethrow;
+      }
 
-      // nearestSaunas.sort((a, b) => a.lattitude.compareTo(b.lattitude));
-
-      // Sort by meter
+      // Sort by distance
       var lonAndLatDistance = LonAndLatDistance();
       List<Map<String, dynamic>> placeMap = [];
 
       for (int i = 0; i < response.length; i++) {
-        final pData = SaunaPlaceModel.fromJson(response[i]);
+        try {
+          print('Processing sauna ${i + 1}/${response.length}');
+          print('Raw sauna data: ${response[i]}');
+          
+          // Check if latitude and longitude exist and are valid
+          final double? saunaLat = response[i]['latitude']?.toDouble();
+          final double? saunaLong = response[i]['longitude']?.toDouble();
+          
+          if (saunaLat == null || saunaLong == null) {
+            print('⚠️ Invalid coordinates for sauna ${response[i]['id']}');
+            continue;
+          }
 
-        final double mile = lonAndLatDistance.lonAndLatDistance(
-            lat1: pData.lattitude,
-            lon1: pData.longitude,
-            lat2: position.latitude,
-            lon2: position.longitude,
-            km: true);
-        //based on miles which is smaller, sort it and add pdata to nearestSaunas
-        placeMap.add({'mile': mile, 'place': pData});
+          final pData = SaunaPlaceModel.fromJson(response[i]);
+          
+          final double distanceKm = lonAndLatDistance.lonAndLatDistance(
+              lat1: saunaLat,
+              lon1: saunaLong,
+              lat2: position.latitude,
+              lon2: position.longitude,
+              km: true);
+              
+          pData.distance = distanceKm;
+          placeMap.add({'distance': distanceKm, 'place': pData});
+          print('✅ Successfully processed sauna at distance: ${distanceKm.toStringAsFixed(2)}km');
+        } catch (e) {
+          print('❌ Error processing sauna ${i + 1}: $e');
+          continue;
+        }
       }
 
-      placeMap.sort((a, b) => a['mile'].compareTo(b['mile']));
-      for (int i = 0; i < placeMap.length; i++) {
-        print(placeMap[i]['mile']);
-        print(placeMap[i]['place'].address);
-
+      // Sort by distance
+      placeMap.sort((a, b) => a['distance'].compareTo(b['distance']));
+      
+      // Take only the closest 10 saunas
+      final maxSaunas = placeMap.length > 10 ? 10 : placeMap.length;
+      nearestSaunas.clear(); // Clear existing list before adding new items
+      for (int i = 0; i < maxSaunas; i++) {
         nearestSaunas.add(placeMap[i]['place']);
       }
+      
+      print('🎯 Final nearest saunas count: ${nearestSaunas.length}');
     } catch (e) {
-      print('$e');
+      print('Error finding nearby saunas: $e');
     } finally {
       update();
       setLoadingFalse();

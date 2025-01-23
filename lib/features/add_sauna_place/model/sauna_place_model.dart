@@ -14,7 +14,10 @@ class SaunaPlaceModel {
   String? commercialPhone;
   String? zipCode;
   String? saunaType;
+  String? website;      // Added website field
+  String? instagram;    // Added instagram field
   DateTime createdAt;
+  double? distance; // Distance in kilometers from user's location
 
   SaunaPlaceModel({
     required this.id,
@@ -31,8 +34,11 @@ class SaunaPlaceModel {
     this.address,
     this.commercialPhone,
     this.saunaType,
+    this.website,      // Added to constructor
+    this.instagram,    // Added to constructor
     required this.createdAt,
     this.zipCode,
+    this.distance,
   });
 
   factory SaunaPlaceModel.fromJson(Map<String, dynamic> json) => SaunaPlaceModel(
@@ -50,8 +56,11 @@ class SaunaPlaceModel {
         imgLinks: json['img_links'],
         address: json['address'],
         commercialPhone: json['commercial_phone'],
-        zipCode: json['zip_code'],
         saunaType: json['sauna_type'],
+        website: json['website'],           // Added to fromJson
+        instagram: json['instagram'],       // Added to fromJson
+        zipCode: json['zip_code'],
+        distance: json['distance'],
       );
 
   Map<String, dynamic> toJson() => {
@@ -68,8 +77,11 @@ class SaunaPlaceModel {
         'img_links': imgLinks,
         'address': address,
         'commercial_phone': commercialPhone,
-        'zip_code': zipCode,
         'sauna_type': saunaType,
+        'website': website,                 // Added to toJson
+        'instagram': instagram,             // Added to toJson
+        'zip_code': zipCode,
         'created_at': createdAt.toIso8601String(),
+        'distance': distance,
       };
 }

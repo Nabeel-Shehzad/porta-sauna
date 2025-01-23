@@ -5,6 +5,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:longitude_and_latitude_calculator/longitude_and_latitude_calculator.dart';
 import 'dart:async';  
 import 'package:portasauna/core/bindings/init_dependencies.dart';
 import 'package:portasauna/core/theme/pallete.dart';
@@ -23,9 +24,9 @@ import 'dart:ui' as ui;
 import 'dart:ui';
 
 class MapController extends GetxController {
-  late GoogleMapController controller;
+  GoogleMapController? controller;  
   final searchController = TextEditingController();
-  final _controllerReady = false.obs;
+  final controllerReady = false.obs;  
   bool showSearchAreaButton = false;
   bool isLoading = false;
   LatLngCustomModel? selectedPlaceLatLong;
@@ -165,7 +166,7 @@ class MapController extends GetxController {
             ),
             icon: customIcon,
             onTap: () {
-              showSaunaDetails(placesList[i]);
+              setSelectedSauna(placesList[i]);
             },
           ),
         );
@@ -181,9 +182,35 @@ class MapController extends GetxController {
     );
   }
 
-  animateCameraToNewPosition({double? zoom, lat, long}) {
-    controller.animateCamera(CameraUpdate.newCameraPosition(
-        cameraPosition(zoom: zoom, lat: lat, long: long)));
+  Future<LatLng> getCurrentCameraTarget() async {
+    if (controller != null) {
+      final bounds = await controller!.getVisibleRegion();
+      // Get center point of visible region
+      return LatLng(
+        (bounds.northeast.latitude + bounds.southwest.latitude) / 2,
+        (bounds.northeast.longitude + bounds.southwest.longitude) / 2
+      );
+    }
+    return LatLng(defaultLat!, defaultLong!);
+  }
+
+  Future<void> moveCamera(LatLng target, {double zoom = 15}) async {
+    try {
+      if (controller != null && controllerReady.value) {
+        await controller!.animateCamera(
+          CameraUpdate.newCameraPosition(
+            CameraPosition(
+              target: target,
+              zoom: zoom,
+            ),
+          ),
+        );
+      } else {
+        print('Map controller not ready for camera movement');
+      }
+    } catch (e) {
+      print('Error moving camera: $e');
+    }
   }
 
 //==================>
@@ -194,11 +221,19 @@ class MapController extends GetxController {
 
   makeSuggestedPlaceEmpty() {
     suggestedPlaces = [];
+    showSearchAreaButton = true;
     update();
   }
 
   searchPlace({required placeName}) async {
-    makeSuggestedPlaceEmpty();
+    if (placeName.isEmpty) {
+      makeSuggestedPlaceEmpty();
+      return;
+    }
+    
+    showSearchAreaButton = false;
+    suggestedPlaces = [];
+    update();
 
     final suggestions = await Get.find<MapPlaceController>()
         .getPlaceSuggestion(placeName: placeName);
@@ -213,8 +248,13 @@ class MapController extends GetxController {
   }
 
   Future<bool> moveCameraToPlace(BuildContext context,
-      {required placeName, bool animateCamera = true}) async {
+      {required placeName, bool animateCamera = true, bool clearMarkers = false}) async {
     try {
+      if (clearMarkers) {
+        markers.clear();
+        update();
+      }
+
       final placeLatLong = await Get.find<MapPlaceController>()
           .getLatLongFromPlaceName(placeName: placeName);
 
@@ -226,13 +266,15 @@ class MapController extends GetxController {
       setSelectedPlaceGeometry(latLongFromApi.results[0].geometry);
 
       if (animateCamera) {
-        animateCameraToNewPosition(
-          lat: lat,
-          long: long,
+        await moveCamera(
+          LatLng(lat, long),
+          zoom: 13.0,
         );
       }
 
-      getSaunaPlacesOnMap(context);
+      // Wait for camera movement to complete
+      await Future.delayed(const Duration(milliseconds: 500));
+      await getSaunaPlacesOnMap(context, addCurrentLocation: false);
       return true;
     } catch (e) {
       showSnackBar(context, e.toString(), Pallete.redColor);
@@ -258,323 +300,197 @@ class MapController extends GetxController {
   //==================>
 
   List<SaunaPlaceModel> placesList = [];
-
   bool showHorizontalCard = false;
-  setShowHorizontalCard(bool v) {
-    showHorizontalCard = v;
+
+  void setShowHorizontalCard(bool show) {
+    showHorizontalCard = show;
     update();
   }
 
-  Future<void> loadSaunaPlaces() async {
+  void onMapCreated(GoogleMapController mapController) async {
     try {
-      final saunaPlaces = await dbClient
-          .from('sauna_locations')
-          .select()
-          .eq('is_approved', true);
-
-      print('Loaded ${saunaPlaces.length} saunas');
-      markers.clear();
-
-      for (var sauna in saunaPlaces) {
-        print('Sauna type from database: "${sauna['sauna_type']}"');
-        if (sauna['latitude'] != null && sauna['longitude'] != null) {
-          final customIcon = await CustomMarkerHelper.getMarkerIcon(sauna['sauna_type']);
-          
-          final position = LatLng(
-            double.parse(sauna['latitude'].toString()),
-            double.parse(sauna['longitude'].toString()),
-          );
-
-          final marker = Marker(
-            markerId: MarkerId(sauna['id'].toString()),
-            position: position,
-            icon: customIcon,
-            infoWindow: InfoWindow(
-              title: sauna['sauna_type'] ?? 'Sauna',
-              snippet: sauna['description'] ?? 'No description available',
-            ),
-            onTap: () {
-              showSaunaDetails(SaunaPlaceModel.fromJson(sauna));
-            },
-          );
-          
-          markers.add(marker);
-        }
-      }
+      controller = mapController;
+      controllerReady.value = true;
       update();
+      
+      // Wait for map to be ready
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      // Get initial location and load saunas
+      final position = await getCurrentLocation();
+      if (position != null) {
+        await moveCamera(
+          LatLng(position.latitude, position.longitude),
+          zoom: 12,
+        );
+      }
+      
+      // Load initial saunas
+      await getSaunaPlacesOnMap(Get.context!, addCurrentLocation: true);
     } catch (e) {
-      print('Error loading sauna places: $e');
+      print('Error in onMapCreated: $e');
+      if (Get.context != null) {
+        showSnackBar(Get.context!, 'Error initializing map', Pallete.redColor);
+      }
     }
   }
 
-  Future<void> getSaunaPlacesOnMap(
-    BuildContext context,
-  ) async {
-    try {
-      setLoadingTrue();
-      placesList.clear();
+  // Selected sauna for showing in bottom card
+  SaunaPlaceModel? selectedSauna;
+  
+  void setSelectedSauna(SaunaPlaceModel? sauna) {
+    selectedSauna = sauna;
+    setShowHorizontalCard(true);
+    update();
+  }
 
-      final fc = Get.find<FilterSaunaPlaceController>();
-      List<AddPlaceAroundThingsModel> wildType = fc.wildTypeList;
-      List<AddPlaceAroundThingsModel> commercialType = fc.commercialList;
-      List<AddPlaceAroundThingsModel> nearbyService = fc.nearbyServiceList;
-      List<AddPlaceAroundThingsModel> nearbyActivity = fc.nearbyActivityList;
+  void hideBottomCard() {
+    selectedSauna = null;
+    setShowHorizontalCard(false);
+    update();
+  }
 
-      final minLongitude = selectedPlaceGeometry?.viewport?.southwest?.lng;
-      final minLatitude = selectedPlaceGeometry?.viewport?.southwest?.lat;
-      final maxLongitude = selectedPlaceGeometry?.viewport?.northeast?.lng;
-      final maxLatitude = selectedPlaceGeometry?.viewport?.northeast?.lat;
+  void addSaunaMarker(SaunaPlaceModel sauna) async {
+    if (sauna.lattitude != null && sauna.longitude != null) {
+      bool isFree = sauna.selectedWildType != null && 
+                    sauna.selectedWildType!.isNotEmpty;
+      String? locationType = isFree ? 
+          sauna.selectedWildType?.first : 
+          sauna.selectedCommercialType?.first;
 
-      final response = await dbClient
-          .from('sauna_locations')
-          .select()
-          .gte('latitude', minLatitude?.floor() ?? 0)
-          .lte('latitude', maxLatitude?.ceil() ?? 0)
-          .gte('longitude', minLongitude?.floor() ?? 0)
-          .lte('longitude', maxLongitude?.ceil() ?? 0)
-          .eq('is_approved', true);
-
-      //Below codes are for filters
-      //=======================>
-      List<String>? selectedWildType = [];
-      List<String>? selectedCommercialType = [];
-      List<String>? selectedNearbyService = [];
-      List<String>? selectedNearbyActivities = [];
-
-      for (int i = 0; i < wildType.length; i++) {
-        if (wildType[i].selected) {
-          selectedWildType.add(wildType[i].name);
-        }
-      }
-      for (int i = 0; i < commercialType.length; i++) {
-        if (commercialType[i].selected) {
-          selectedCommercialType.add(commercialType[i].name);
-        }
-      }
-      for (int i = 0; i < nearbyService.length; i++) {
-        if (nearbyService[i].selected) {
-          selectedNearbyService.add(nearbyService[i].name);
-        }
-      }
-      for (int i = 0; i < nearbyActivity.length; i++) {
-        if (nearbyActivity[i].selected) {
-          selectedNearbyActivities.add(nearbyActivity[i].name);
-        }
-      }
-
-      List mergedList = selectedWildType +
-          selectedCommercialType +
-          selectedNearbyService +
-          selectedNearbyActivities;
-
-      for (int i = 0; i < response.length; i++) {
-        var responseData = response[i];
-
-        if (selectedWildType.isEmpty &&
-            selectedCommercialType.isEmpty &&
-            selectedNearbyService.isEmpty &&
-            selectedNearbyActivities.isEmpty) {
-          placesList.add(SaunaPlaceModel.fromJson(responseData));
-        } else {
-          for (int i = 0; i < mergedList.length; i++) {
-            if (responseData['wild_location'].contains(mergedList[i])) {
-              placesList.add(SaunaPlaceModel.fromJson(responseData));
-            } else if (responseData['commercial_location']
-                .contains(mergedList[i])) {
-              placesList.add(SaunaPlaceModel.fromJson(responseData));
-            } else if (responseData['nearby_service'].contains(mergedList[i])) {
-              placesList.add(SaunaPlaceModel.fromJson(responseData));
-            } else if (responseData['nearby_activity']
-                .contains(mergedList[i])) {
-              placesList.add(SaunaPlaceModel.fromJson(responseData));
-            }
-          }
-        }
-      }
-
-      //sort place based on which one is closer
-      placesList.sort((a, b) {
-        final distanceA = Geolocator.distanceBetween(
-          selectedPlaceGeometry?.location?.lat ?? 0.0,
-          selectedPlaceGeometry?.location?.lng ?? 0.0,
-          a.lattitude,
-          a.longitude,
-        );
-        final distanceB = Geolocator.distanceBetween(
-          selectedPlaceGeometry?.location?.lat ?? 0.0,
-          selectedPlaceGeometry?.location?.lng ?? 0.0,
-          b.lattitude,
-          b.longitude,
-        );
-        return distanceA.compareTo(distanceB);
-      });
-
-      // placesList.sort((a, b) => a.lattitude.compareTo(b.lattitude));
-
-      addMultipleMarkers();
-
-      addCurrentPlaceMarker(
-        lat: selectedPlaceGeometry?.location?.lat ?? 0.0,
-        long: selectedPlaceGeometry?.location?.lng ?? 0.0,
+      final customIcon = await CustomMarkerHelper.createCustomMarker(
+        color: isFree ? const Color(0xFF5ce65c) : Colors.blue,
       );
 
-      if (placesList.isEmpty) {
-        setShowHorizontalCard(false);
-      } else {
-        setShowHorizontalCard(true);
+      markers.add(
+        Marker(
+          markerId: MarkerId(sauna.id.toString()),
+          position: LatLng(
+            double.parse(sauna.lattitude.toString()),
+            double.parse(sauna.longitude.toString()),
+          ),
+          infoWindow: InfoWindow(
+            title: isFree ? 
+              "Free Sauna Spot | ${locationType ?? ''}" :
+              "Commercial | ${locationType ?? ''}",
+            snippet: sauna.description ?? '',
+          ),
+          icon: customIcon,
+          onTap: () {
+            setSelectedSauna(sauna);
+          },
+        ),
+      );
+    }
+  }
+
+  Future<void> getSaunaPlacesOnMap(BuildContext context, {bool addCurrentLocation = false}) async {
+    try {
+      if (controller == null || !controllerReady.value) {
+        print('Map controller not ready yet');
+        return;
+      }
+
+      final bounds = await controller!.getVisibleRegion();
+      final center = await getCurrentCameraTarget();
+      
+      if (_lastSearchBounds != null && _isSameArea(bounds.northeast, bounds.southwest)) {
+        return;
+      }
+      _lastSearchBounds = bounds;
+
+      setLoadingTrue();
+      markers.clear();
+
+      try {
+        final saunaPlaces = await dbClient
+            .from('sauna_locations')
+            .select()
+            .eq('is_approved', true)
+            .gte('latitude', bounds.southwest.latitude)
+            .lte('latitude', bounds.northeast.latitude)
+            .gte('longitude', bounds.southwest.longitude)
+            .lte('longitude', bounds.northeast.longitude);
+
+        placesList.clear();
+        
+        if (addCurrentLocation) {
+          final position = await getCurrentLocation();
+          if (position != null) {
+            final currentLocationIcon = await CustomMarkerHelper.createCustomMarker(
+              color: Colors.red,
+            );
+            markers.add(
+              Marker(
+                markerId: const MarkerId('current_location'),
+                position: LatLng(position.latitude, position.longitude),
+                icon: currentLocationIcon,
+                infoWindow: const InfoWindow(
+                  title: 'Your Location',
+                ),
+              ),
+            );
+          }
+        }
+
+        for (var place in saunaPlaces) {
+          try {
+            final saunaPlace = SaunaPlaceModel.fromJson(place);
+            placesList.add(saunaPlace);
+            addSaunaMarker(saunaPlace);
+          } catch (e) {
+            print('Error processing sauna: $e');
+            continue;
+          }
+        }
+
+        setShowHorizontalCard(placesList.isNotEmpty);
+        if (placesList.isNotEmpty) {
+          print('✅ Successfully loaded ${placesList.length} saunas');
+          showSnackBar(context, 'Found ${placesList.length} saunas in this area', Colors.green);
+        } else {
+          setShowHorizontalCard(false);
+          showSnackBar(context, 'No sauna spots found in this area', Colors.orange);
+        }
+      } catch (e) {
+        print('Error fetching sauna places: $e');
+        showSnackBar(context, 'Error fetching sauna places', Pallete.redColor);
       }
     } catch (e) {
-      showSnackBar(context, 'Failed to load sauna places', Colors.red);
-      print('$e');
+      print('❌ Error in getSaunaPlacesOnMap: $e');
+      showSnackBar(context, 'Error loading sauna places', Pallete.redColor);
     } finally {
       setLoadingFalse();
       update();
     }
   }
 
-  @override
-  void onInit() {
-    super.onInit();
-    showSearchAreaButton = true;
-    ever(_controllerReady, (ready) {
-      if (ready) {
-        getCurrentLocation();
-      }
-    });
-    update();
-  }
+  Future<Position?> getCurrentLocation() async {
+    bool serviceEnabled;
+    LocationPermission permission;
 
-  @override
-  void onMapCreated(GoogleMapController mapController) {
-    controller = mapController;
-    _controllerReady.value = true;
-    loadSaunaPlaces();
-    update();
-  }
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      return null;
+    }
 
-  @override
-  void onClose() {
-    controller.dispose();
-    searchController.dispose();
-    super.onClose();
-  }
-
-  Future<void> getCurrentLocation() async {
-    try {
-      print('Starting location request process...');
-      
-      // 1. Check if location service is enabled
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      print('Location services enabled: $serviceEnabled');
-      
-      if (!serviceEnabled) {
-        Get.snackbar(
-          'Location Services Disabled',
-          'Please enable location services in your device settings.',
-          backgroundColor: Colors.orange[100],
-          colorText: Colors.orange[900],
-          duration: const Duration(seconds: 4),
-          mainButton: TextButton(
-            onPressed: () async {
-              await Geolocator.openLocationSettings();
-            },
-            child: const Text('Open Settings'),
-          ),
-        );
-        return;
-      }
-
-      // 2. Check location permission
-      LocationPermission permission = await Geolocator.checkPermission();
-      print('Current permission status: $permission');
-      
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
-        print('Permission denied, requesting permission...');
-        permission = await Geolocator.requestPermission();
-        
-        if (permission == LocationPermission.denied) {
-          Get.snackbar(
-            'Permission Denied',
-            'Location permission is required to show your location.',
-            backgroundColor: Colors.red[100],
-            colorText: Colors.red[900],
-            duration: const Duration(seconds: 4),
-          );
-          return;
-        }
+        return null;
       }
+    }
 
-      if (permission == LocationPermission.deniedForever) {
-        Get.snackbar(
-          'Permission Permanently Denied',
-          'Please enable location permission in app settings.',
-          backgroundColor: Colors.red[100],
-          colorText: Colors.red[900],
-          duration: const Duration(seconds: 4),
-          mainButton: TextButton(
-            onPressed: () async {
-              await Geolocator.openAppSettings();
-            },
-            child: const Text('Open Settings'),
-          ),
-        );
-        return;
-      }
+    if (permission == LocationPermission.deniedForever) {
+      return null;
+    }
 
-      print('Getting current position...');
-      // 3. Get current position with timeout
-      Position? position;
-      try {
-        position = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high,
-        ).timeout(const Duration(seconds: 10));
-      } on TimeoutException {
-        print('Location request timed out');
-        throw 'Location request timed out. Please try again.';
-      }
-
-      print('Position received: ${position.latitude}, ${position.longitude}');
-
-      // 4. Check if controller is ready and not disposed
-      if (!isClosed && controller != null && _controllerReady.value) {
-        print('Moving camera to current location...');
-        await controller.animateCamera(
-          CameraUpdate.newCameraPosition(
-            CameraPosition(
-              target: LatLng(position.latitude, position.longitude),
-              zoom: 15,
-            ),
-          ),
-        );
-        print('Camera moved successfully');
-      } else {
-        print('Controller not ready: isClosed=$isClosed, controller=${controller != null}, ready=${_controllerReady.value}');
-      }
-
-    } catch (e, stackTrace) {
-      print('Error getting location: $e');
-      print('Stack trace: $stackTrace');
-      
-      String errorMessage = 'Unable to get your location.';
-      if (e is String && e.contains('timed out')) {
-        errorMessage = e;
-      } else if (e is PermissionDeniedException) {
-        errorMessage = 'Location permission denied. Please check your settings.';
-      } else if (e is LocationServiceDisabledException) {
-        errorMessage = 'Location services are disabled. Please enable them in settings.';
-      }
-
-      Get.snackbar(
-        'Location Error',
-        errorMessage,
-        backgroundColor: Colors.red[100],
-        colorText: Colors.red[900],
-        duration: const Duration(seconds: 4),
-        mainButton: TextButton(
-          onPressed: () => getCurrentLocation(),
-          child: const Text('Retry'),
-        ),
-      );
+    try {
+      return await Geolocator.getCurrentPosition();
+    } catch (e) {
+      print('Error getting current location: $e');
+      return null;
     }
   }
 
@@ -582,96 +498,141 @@ class MapController extends GetxController {
     try {
       setLoadingTrue();
       showSearchAreaButton = false;
-      update();
+      
+      // Get current visible region bounds
+      final bounds = await controller!.getVisibleRegion();
+      _lastSearchBounds = bounds;
+      
+      print('🔍 Searching in bounds: ${bounds.toString()}');
 
-      // Get visible region bounds
-      final visibleRegion = await controller.getVisibleRegion();
-      print('Searching in bounds: NE(${visibleRegion.northeast.latitude}, ${visibleRegion.northeast.longitude}), SW(${visibleRegion.southwest.latitude}, ${visibleRegion.southwest.longitude})');
-      _lastSearchBounds = visibleRegion;
-
-      // Query database
-      print('Querying database for saunas...');
-      final saunaPlaces = await dbClient
+      // Query Supabase for saunas in this area - using only columns that exist in the schema
+      final response = await dbClient
           .from('sauna_locations')
-          .select()
-          .eq('is_approved', true)
-          .gte('latitude', visibleRegion.southwest.latitude)
-          .lte('latitude', visibleRegion.northeast.latitude)
-          .gte('longitude', visibleRegion.southwest.longitude)
-          .lte('longitude', visibleRegion.northeast.longitude);
+          .select('''
+            id,
+            created_at,
+            latitude,
+            longitude,
+            wild_location,
+            commercial_location,
+            nearby_service,
+            nearby_activity,
+            description,
+            img_links,
+            user_id,
+            address,
+            is_approved,
+            zip_code,
+            commercial_phone,
+            checked_in_users
+          ''')
+          .gte('latitude', bounds.southwest.latitude)
+          .lte('latitude', bounds.northeast.latitude)
+          .gte('longitude', bounds.southwest.longitude)
+          .lte('longitude', bounds.northeast.longitude)
+          .eq('is_approved', true);
 
-      print('Query result: Found ${saunaPlaces.length} saunas');
+      print('📍 Found ${response.length} saunas in this area');
 
+      // Clear existing places and markers
+      placesList.clear();
       markers.clear();
 
-      if (saunaPlaces.isEmpty) {
-        print('No saunas found in the visible area');
-        Get.snackbar(
-          'No Results',
-          'No saunas found in this area. Try zooming out or moving to a different location.',
-          backgroundColor: Colors.orange[100],
-          colorText: Colors.orange[900],
-          duration: const Duration(seconds: 3),
-        );
-        return;
-      }
-
-      // Add markers for found saunas
-      for (var sauna in saunaPlaces) {
-        print('Processing sauna: ${sauna['id']} at ${sauna['latitude']}, ${sauna['longitude']}');
-        
-        if (sauna['latitude'] != null && sauna['longitude'] != null) {
+      // Process results
+      if (response.isNotEmpty) {
+        for (var place in response) {
           try {
-            final customIcon = await CustomMarkerHelper.getMarkerIcon(sauna['sauna_type']);
+            // Determine the marker type based on location type
+            String markerType = place['commercial_location'] == true ? 'commercial' : 
+                              place['wild_location'] == true ? 'wild' : 'default';
             
-            final position = LatLng(
-              double.parse(sauna['latitude'].toString()),
-              double.parse(sauna['longitude'].toString()),
-            );
+            final saunaPlace = SaunaPlaceModel.fromJson(place);
+            placesList.add(saunaPlace);
+            
+            // Add marker for this place
+            if (saunaPlace.lattitude != null && saunaPlace.longitude != null) {
+              // Determine if it's a free or commercial sauna
+              bool isFree = saunaPlace.selectedWildType != null && 
+                           saunaPlace.selectedWildType!.isNotEmpty;
+              String? locationType = isFree ? 
+                  saunaPlace.selectedWildType?.first : 
+                  saunaPlace.selectedCommercialType?.first;
 
-            final marker = Marker(
-              markerId: MarkerId(sauna['id'].toString()),
-              position: position,
-              icon: customIcon,
-              infoWindow: InfoWindow(
-                title: sauna['sauna_type'] ?? 'Sauna',
-                snippet: sauna['description'] ?? 'No description available',
-              ),
-              onTap: () {
-                showSaunaDetails(SaunaPlaceModel.fromJson(sauna));
-              },
-            );
-            
-            markers.add(marker);
-            print('Added marker for sauna ${sauna['id']}');
+              final customIcon = await CustomMarkerHelper.createCustomMarker(
+                color: isFree ? const Color(0xFF5ce65c) : Colors.blue,
+              );
+
+              markers.add(
+                Marker(
+                  markerId: MarkerId(saunaPlace.id.toString()),
+                  position: LatLng(
+                    double.parse(saunaPlace.lattitude.toString()),
+                    double.parse(saunaPlace.longitude.toString()),
+                  ),
+                  infoWindow: InfoWindow(
+                    title: isFree ? 
+                      "Free Sauna Spot | ${locationType ?? ''}" :
+                      "Commercial | ${locationType ?? ''}",
+                    snippet: saunaPlace.description ?? '',
+                  ),
+                  icon: customIcon,
+                  onTap: () {
+                    setSelectedSauna(saunaPlace);
+                  },
+                ),
+              );
+            }
           } catch (e) {
-            print('Error creating marker for sauna ${sauna['id']}: $e');
+            print('Error processing sauna: $e');
           }
         }
+        
+        // Show the horizontal card if places were found
+        setShowHorizontalCard(true);
+        
+        print('✅ Successfully loaded ${placesList.length} saunas');
+        showSnackBar(context, 'Found ${placesList.length} saunas in this area', Colors.green);
+      } else {
+        setShowHorizontalCard(false);
+        showSnackBar(context, 'No sauna spots found in this area', Colors.orange);
       }
-
-      print('Successfully added ${markers.length} markers');
-      Get.snackbar(
-        'Success',
-        'Found ${saunaPlaces.length} saunas in this area',
-        backgroundColor: Colors.green[100],
-        colorText: Colors.green[900],
-        duration: const Duration(seconds: 2),
-      );
-      
-      update();
-    } catch (e, stackTrace) {
-      print('Error searching sauna places: $e');
-      print('Stack trace: $stackTrace');
-      Get.snackbar(
-        'Search Error',
-        'Unable to search for saunas. Please check your internet connection and try again.',
-        backgroundColor: Colors.red[100],
-        colorText: Colors.red[900],
-        duration: const Duration(seconds: 3),
-      );
+    } catch (e) {
+      print('❌ Error searching area: $e');
+      showSnackBar(context, 'Error searching this area', Colors.red);
     } finally {
       setLoadingFalse();
+      update();
+    }
+  }
+
+  void showSaunaDetails(SaunaPlaceModel sauna) {
+    Get.find<FindNearSaunaController>().setSelectedSaunaPlace(sauna);
+    Get.to(() => const SaunaPlaceDetailsPage());
+  }
+
+  @override
+  void onInit() {
+    super.onInit();
+    initializeMap();
+  }
+
+  @override
+  void onClose() {
+    controller?.dispose();
+    searchController.dispose();
+    super.onClose();
+  }
+
+  Future<void> initializeMap() async {
+    try {
+      final position = await getCurrentLocation();
+      if (position != null) {
+        defaultLat = position.latitude;
+        defaultLong = position.longitude;
+        update();
+      }
+    } catch (e) {
+      print('Error initializing map: $e');
     }
   }
 
@@ -691,7 +652,7 @@ class MapController extends GetxController {
 
     // Show search button when camera stops moving
     if (_lastCameraPosition != null) {
-      final visibleRegion = await controller.getVisibleRegion();
+      final visibleRegion = await controller!.getVisibleRegion();
       final northeast = visibleRegion.northeast;
       final southwest = visibleRegion.southwest;
 
@@ -771,12 +732,5 @@ class MapController extends GetxController {
     final byteData = await image.toByteData(format: ImageByteFormat.png);
     
     return BitmapDescriptor.fromBytes(byteData!.buffer.asUint8List());
-  }
-
-  void showSaunaDetails(SaunaPlaceModel sauna) {
-    // Set the selected sauna place
-    Get.find<FindNearSaunaController>().setSelectedSaunaPlace(sauna);
-    // Navigate to the dark-themed details page
-    Get.to(() => const SaunaPlaceDetailsPage());
   }
 }

@@ -14,6 +14,7 @@ import 'package:portasauna/features/discover/widgets/place_details_four_icons.da
 import 'package:portasauna/features/discover/widgets/ratings_and_created_by.dart';
 import 'package:portasauna/features/discover/widgets/services_and_activities.dart';
 import 'package:portasauna/features/home/controller/find_near_sauna_controller.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class SaunaPlaceDetailsPage extends StatefulWidget {
   const SaunaPlaceDetailsPage({super.key});
@@ -65,10 +66,80 @@ class _SaunaPlaceDetailsPageState extends State<SaunaPlaceDetailsPage> {
     setState(() {});
   }
 
+  Future<void> _launchUrl(String? url) async {
+    if (url == null || url.isEmpty) return;
+
+    // Add https:// if not present and remove any whitespace
+    url = url.trim();
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://$url';
+    }
+
+    try {
+      final uri = Uri.parse(url);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not open website: $url')),
+          );
+        }
+      }
+    } catch (e) {
+      print('Error launching URL: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Invalid website URL')),
+        );
+      }
+    }
+  }
+
+  Future<void> _launchInstagram(String? username) async {
+    if (username == null || username.isEmpty) return;
+
+    // Remove @ if present and trim whitespace
+    username = username.trim();
+    username = username.startsWith('@') ? username.substring(1) : username;
+
+    try {
+      // Try app first
+      final appUri = Uri.parse('instagram://user?username=$username');
+      if (await canLaunchUrl(appUri)) {
+        await launchUrl(appUri);
+        return;
+      }
+
+      // Fallback to website
+      final webUri = Uri.parse('https://instagram.com/$username');
+      if (await canLaunchUrl(webUri)) {
+        await launchUrl(webUri, mode: LaunchMode.externalApplication);
+      } else {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text('Could not open Instagram profile: @$username')),
+          );
+        }
+      }
+    } catch (e) {
+      print('Error launching Instagram: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Invalid Instagram username')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return GetBuilder<FavouriteController>(builder: (favContr) {
       return GetBuilder<FindNearSaunaController>(builder: (fnc) {
+        // Debug prints
+        print("Website: ${fnc.selectedSaunaPlace.website}");
+        print("Instagram: ${fnc.selectedSaunaPlace.instagram}");
         return Scaffold(
           appBar: appbarCommon('', context),
           body: SingleChildScrollView(
@@ -102,7 +173,11 @@ class _SaunaPlaceDetailsPageState extends State<SaunaPlaceDetailsPage> {
                           context: context,
                           fontSize: 17.h,
                           fontWeight: FontWeight.w600,
-                          color: Pallete.primarColor),
+                          color: fnc.selectedSaunaPlace.selectedWildType!
+                                  .isNotEmpty
+                              ? const Color(0xFF5ce65c) // Green color for Free
+                              : Pallete
+                                  .primarColor), // Blue color for Commercial
                     ),
 
                   gapH(20),
@@ -159,12 +234,32 @@ class _SaunaPlaceDetailsPageState extends State<SaunaPlaceDetailsPage> {
                   //===================>\
                   const ServicesAndActivities(),
 
-                  if (fnc.selectedSaunaPlace.description != null)
+                  //===================>
+                  //Description
+                  //===================>
+                  if (fnc.selectedSaunaPlace.description != null &&
+                      fnc.selectedSaunaPlace.description!.isNotEmpty)
                     Container(
                       margin: EdgeInsets.only(top: 20.h),
-                      child: detailsRow(context,
-                          title: 'Description',
-                          details: fnc.selectedSaunaPlace.description ?? ''),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Description',
+                            style: Theme.of(context)
+                                .textTheme
+                                .headlineSmall
+                                ?.copyWith(
+                                  fontSize: 18.h,
+                                ),
+                          ),
+                          gapH(10),
+                          _buildClickableDescription(
+                            context,
+                            fnc.selectedSaunaPlace.description ?? '',
+                          ),
+                        ],
+                      ),
                     ),
 
                   gapH(10),
@@ -205,6 +300,58 @@ class _SaunaPlaceDetailsPageState extends State<SaunaPlaceDetailsPage> {
         );
       });
     });
+  }
+
+  Widget _buildClickableDescription(BuildContext context, String description) {
+    final List<InlineSpan> spans = [];
+    final lines = description.split('\n');
+
+    for (final line in lines) {
+      if (line.trim().isEmpty) continue;
+
+      if (line.contains('Website:')) {
+        final url = line.split('Website:')[1].trim();
+        spans.add(TextSpan(text: 'Website:\n', style: TextUtils.small1(context: context)));
+        spans.add(
+          TextSpan(
+            text: url,
+            style: TextUtils.small1(
+              context: context,
+              color: Colors.blue,
+              decoration: TextDecoration.none,
+            ),
+            recognizer: TapGestureRecognizer()
+              ..onTap = () => _launchUrl(url),
+          ),
+        );
+        spans.add(TextSpan(text: '\n', style: TextUtils.small1(context: context))); // Add extra line break
+      } else if (line.contains('Instagram:')) {
+        final username = line.split('Instagram:')[1].trim();
+        spans.add(TextSpan(text: 'Instagram:\n', style: TextUtils.small1(context: context)));
+        spans.add(
+          TextSpan(
+            text: username,
+            style: TextUtils.small1(
+              context: context,
+              color: Colors.blue,
+              decoration: TextDecoration.none,
+            ),
+            recognizer: TapGestureRecognizer()
+              ..onTap = () => _launchInstagram(username),
+          ),
+        );
+        
+      } else {
+        spans.add(TextSpan(
+          text: '$line\n',
+          style: TextUtils.small1(context: context),
+        ));
+      }
+    }
+
+    return RichText(
+      text: TextSpan(children: spans),
+    );
   }
 
   detailsRow(BuildContext context,

@@ -10,10 +10,25 @@ import 'package:portasauna/features/home/controller/landing_controller.dart';
 import 'package:portasauna/features/home/presentation/skeleton/sauna_card_horizontal_skeleton.dart';
 import 'package:portasauna/features/home/presentation/widgets/home_cards.dart';
 
-class SaunaSpotsAroundYou extends StatelessWidget {
+class SaunaSpotsAroundYou extends StatefulWidget {
   const SaunaSpotsAroundYou({
     super.key,
   });
+
+  @override
+  State<SaunaSpotsAroundYou> createState() => _SaunaSpotsAroundYouState();
+}
+
+class _SaunaSpotsAroundYouState extends State<SaunaSpotsAroundYou> {
+  @override
+  void initState() {
+    super.initState();
+    // Load nearby saunas when widget initializes
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final controller = Get.find<FindNearSaunaController>();
+      controller.getNearestSaunaLocation(context);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -43,18 +58,29 @@ class SaunaSpotsAroundYou extends StatelessWidget {
 
             //
             gapH(30),
-            Text(
-              'Sauna spots near you',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontSize: 22.h,
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Sauna spots near you',
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        fontSize: 22.h,
+                      ),
+                ),
+                if (!fnc.isLoading)
+                  IconButton(
+                    onPressed: () => fnc.getNearestSaunaLocation(context),
+                    icon: const Icon(Icons.refresh),
+                    tooltip: 'Refresh nearby saunas',
                   ),
+              ],
             ),
             gapH(32),
             if (fnc.nearestSaunas.isEmpty && !fnc.isLoading)
               Container(
                 margin: EdgeInsets.only(top: 15.h),
                 child: Text(
-                  'No sauna spots found',
+                  'No sauna spots found nearby',
                   style: Theme.of(context)
                       .textTheme
                       .bodySmall
@@ -63,23 +89,23 @@ class SaunaSpotsAroundYou extends StatelessWidget {
               ),
             if (fnc.nearestSaunas.isNotEmpty && !fnc.isLoading)
               SizedBox(
-                height: 290.h,
+                height: 280.h,  // Match card height
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
                   shrinkWrap: true,
                   clipBehavior: Clip.none,
                   itemCount: fnc.nearestSaunas.length,
                   itemBuilder: (_, i) {
+                    final sauna = fnc.nearestSaunas[i];
                     return InkWell(
                       onTap: () {
-                        fnc.setSelectedSaunaPlace(fnc.nearestSaunas[i]);
+                        fnc.setSelectedSaunaPlace(sauna);
                         Get.to(const SaunaPlaceDetailsPage());
                       },
                       child: HomeCards(
-                        imgLink:
-                            getLocationImage(fnc.nearestSaunas[i].imgLinks),
-                        title:
-                            fnc.nearestSaunas[i].address ?? 'Unknown address',
+                        imgLink: getLocationImage(sauna.imgLinks),
+                        title: sauna.address ?? 'Unknown address',
+                        distance: '${sauna.distance?.toStringAsFixed(1)} km',
                       ),
                     );
                   },
