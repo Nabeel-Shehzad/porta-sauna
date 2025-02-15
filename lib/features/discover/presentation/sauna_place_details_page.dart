@@ -9,6 +9,7 @@ import 'package:portasauna/core/utils/text_utils.dart';
 import 'package:portasauna/core/utils/ui_const.dart';
 import 'package:portasauna/core/widgets/appbar_common.dart';
 import 'package:portasauna/features/discover/controller/favourite_controller.dart';
+import 'package:portasauna/features/discover/controller/rating_controller.dart';
 import 'package:portasauna/features/discover/widgets/place_details_image_slider.dart';
 import 'package:portasauna/features/discover/widgets/place_details_four_icons.dart';
 import 'package:portasauna/features/discover/widgets/ratings_and_created_by.dart';
@@ -45,6 +46,10 @@ class _SaunaPlaceDetailsPageState extends State<SaunaPlaceDetailsPage> {
     latitude = fnc.selectedSaunaPlace.lattitude ?? 0.0;
     longitude = fnc.selectedSaunaPlace.longitude ?? 0.0;
 
+    // Initialize ratings
+    Get.find<RatingController>()
+        .fetchRatings(context, locationId: fnc.selectedSaunaPlace.id);
+
     cameraPosition = CameraPosition(
       target: LatLng(latitude, longitude),
       zoom: 11,
@@ -56,10 +61,18 @@ class _SaunaPlaceDetailsPageState extends State<SaunaPlaceDetailsPage> {
         position: LatLng(latitude, longitude),
         infoWindow: InfoWindow(
           title: fnc.selectedSaunaPlace.address ?? '',
-          snippet: '',
+          snippet: fnc.selectedSaunaPlace.description ?? '',
         ),
         icon: BitmapDescriptor.defaultMarker,
-        onTap: () {},
+        onTap: () {
+          // Focus the map on the marker location
+          controller.animateCamera(
+            CameraUpdate.newLatLngZoom(
+              LatLng(latitude, longitude),
+              15.0, // Zoom level
+            ),
+          );
+        },
       ),
     );
 
@@ -148,9 +161,73 @@ class _SaunaPlaceDetailsPageState extends State<SaunaPlaceDetailsPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  //=============>
+                  // Location and Rating Header
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              fnc.selectedSaunaPlace.address ?? '',
+                              style: TextStyle(
+                                fontSize: 18.sp,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            if (fnc.selectedSaunaPlace.lattitude != null)
+                              Text(
+                                'N ${fnc.selectedSaunaPlace.lattitude}° W ${fnc.selectedSaunaPlace.longitude}°',
+                                style: TextStyle(
+                                  fontSize: 14.sp,
+                                  color: Colors.grey[400],
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      // Rating
+                      GetBuilder<RatingController>(
+                        builder: (rc) {
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Row(
+                                children: List.generate(
+                                  5,
+                                  (index) => Icon(
+                                    index < (rc.averageRating)
+                                        ? Icons.star
+                                        : Icons.star_border,
+                                    color: Colors.amber,
+                                    size: 20.sp,
+                                  ),
+                                ),
+                              ),
+                              rc.isloading
+                                  ? SizedBox(
+                                      height: 15.h,
+                                      width: 15.h,
+                                      child: const CircularProgressIndicator(),
+                                    )
+                                  : Text(
+                                      '${rc.averageRating}/5',
+                                      style: TextStyle(
+                                        fontSize: 14.sp,
+                                        color: Colors.grey[400],
+                                      ),
+                                    ),
+                            ],
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                  gapH(20),
+                  //==============>
                   //image
-                  //=============>
+                  //==============>
 
                   PlaceDetailsImageSlider(
                     imageList: fnc.selectedSaunaPlace.imgLinks ?? [],
@@ -158,15 +235,17 @@ class _SaunaPlaceDetailsPageState extends State<SaunaPlaceDetailsPage> {
 
                   gapH(30),
 
-                  //=============>
+                  //==============>
                   //free or commercial
-                  //=============>
+                  //==============>
                   if (fnc.selectedSaunaPlace.selectedWildType != null)
                     Text(
                       fnc.selectedSaunaPlace.selectedWildType!.isNotEmpty
                           ? "Free Sauna Spot | ${fnc.selectedSaunaPlace.selectedWildType?[0]}"
-                          : fnc.selectedSaunaPlace.selectedCommercialType!
-                                  .isNotEmpty
+                          : fnc.selectedSaunaPlace.selectedCommercialType !=
+                                      null &&
+                                  fnc.selectedSaunaPlace.selectedCommercialType!
+                                      .isNotEmpty
                               ? "Commercial | ${fnc.selectedSaunaPlace.selectedCommercialType?[0]}"
                               : "",
                       style: TextUtils.small1(
@@ -182,9 +261,9 @@ class _SaunaPlaceDetailsPageState extends State<SaunaPlaceDetailsPage> {
 
                   gapH(20),
 
-                  //===================>
+                  //====================>
                   //Address
-                  //===================>
+                  //====================>
                   Text(
                     fnc.selectedSaunaPlace.zipCode != null
                         ? "(${fnc.selectedSaunaPlace.zipCode}) ${fnc.selectedSaunaPlace.address ?? ''}"
@@ -194,21 +273,176 @@ class _SaunaPlaceDetailsPageState extends State<SaunaPlaceDetailsPage> {
                         ),
                   ),
 
-                  //===================>
-                  //4 icons
-                  //===================>
+                  //====================>
+                  // Website and Instagram Links
+                  //====================>
+
+                  if (fnc.selectedSaunaPlace.website != null ||
+                      fnc.selectedSaunaPlace.instagram != null)
+                    Container(
+                      margin: EdgeInsets.symmetric(vertical: 10.h),
+                      child: Row(
+                        children: [
+                          if (fnc.selectedSaunaPlace.website != null)
+                            GestureDetector(
+                              onTap: () =>
+                                  _launchUrl(fnc.selectedSaunaPlace.website),
+                              child: Container(
+                                padding: EdgeInsets.symmetric(
+                                    horizontal: 15.w, vertical: 8.h),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[800],
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.language,
+                                        size: 18.sp, color: Colors.white),
+                                    SizedBox(width: 8.w),
+                                    Text(
+                                      'Website',
+                                      style: TextStyle(
+                                          color: Colors.white, fontSize: 14.sp),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          SizedBox(width: 10.w),
+                          if (fnc.selectedSaunaPlace.instagram != null)
+                            GestureDetector(
+                              onTap: () => _launchInstagram(
+                                  fnc.selectedSaunaPlace.instagram),
+                              child: Container(
+                                padding: EdgeInsets.symmetric(
+                                    horizontal: 15.w, vertical: 8.h),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[800],
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.camera_alt,
+                                        size: 18.sp, color: Colors.white),
+                                    SizedBox(width: 8.w),
+                                    Text(
+                                      'Instagram',
+                                      style: TextStyle(
+                                          color: Colors.white, fontSize: 14.sp),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+
                   gapH(20),
                   const PlaceDetailsFourIcons(),
                   gapH(15),
-                  //===================>
-                  //Ratings and created by
-                  //===================>
-                  const RatingsAndCreatedBy(),
+                  //====================>
+                  //Reviews and Feedback
+                  //====================>
+                  GetBuilder<RatingController>(
+                    builder: (rc) {
+                      return Container(
+                        margin: EdgeInsets.symmetric(vertical: 10.h),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Reviews',
+                              style: TextStyle(
+                                fontSize: 18.sp,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            gapH(10),
+                            // Overall Rating
+                            Row(
+                              children: [
+                                Row(
+                                  children: List.generate(
+                                    5,
+                                    (index) => Icon(
+                                      index < rc.averageRating
+                                          ? Icons.star
+                                          : Icons.star_border,
+                                      color: Colors.amber,
+                                      size: 24.sp,
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(width: 10.w),
+                                Text(
+                                  '${rc.averageRating}/5',
+                                  style: TextStyle(
+                                    fontSize: 16.sp,
+                                    color: Colors.grey[400],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            gapH(20),
+                            // Add Review Section
+                            Text(
+                              'Add a feedback',
+                              style: TextStyle(
+                                fontSize: 16.sp,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            gapH(10),
+                            // Star Rating Input
+                            Row(
+                              children: List.generate(
+                                5,
+                                (index) => GestureDetector(
+                                  onTap: () {
+                                    rc.setRating(index + 1);
+                                  },
+                                  child: Icon(
+                                    index < rc.rating
+                                        ? Icons.star
+                                        : Icons.star_border,
+                                    color: Colors.amber,
+                                    size: 30.sp,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            gapH(10),
+                            // Review Input
+                            Container(
+                              padding: EdgeInsets.symmetric(
+                                  horizontal: 15.w, vertical: 10.h),
+                              decoration: BoxDecoration(
+                                color: Colors.grey[900],
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: TextField(
+                                maxLines: 3,
+                                style: TextStyle(color: Colors.white),
+                                decoration: InputDecoration(
+                                  hintText:
+                                      'Add a feedback to help other users',
+                                  hintStyle: TextStyle(color: Colors.grey[400]),
+                                  border: InputBorder.none,
+                                ),
+                                controller: rc.feedbackController,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
                   gapH(20),
 
-                  //===================>
+                  //====================>
                   //Lattitude longitude
-                  //===================>
+                  //====================>
                   Row(
                     children: [
                       Icon(
@@ -229,14 +463,14 @@ class _SaunaPlaceDetailsPageState extends State<SaunaPlaceDetailsPage> {
 
                   gapH(13),
 
-                  //===================>
+                  //====================>
                   //sevice and activities
-                  //===================>\
+                  //====================>\
                   const ServicesAndActivities(),
 
-                  //===================>
+                  //====================>
                   //Description
-                  //===================>
+                  //====================>
                   if (fnc.selectedSaunaPlace.description != null &&
                       fnc.selectedSaunaPlace.description!.isNotEmpty)
                     Container(
@@ -264,9 +498,9 @@ class _SaunaPlaceDetailsPageState extends State<SaunaPlaceDetailsPage> {
 
                   gapH(10),
 
-                  //=============>
+                  //==============>
                   //Map
-                  //=============>
+                  //==============>
                   if (cameraPosition != null)
                     ClipRRect(
                       borderRadius: radius(3),
@@ -311,7 +545,8 @@ class _SaunaPlaceDetailsPageState extends State<SaunaPlaceDetailsPage> {
 
       if (line.contains('Website:')) {
         final url = line.split('Website:')[1].trim();
-        spans.add(TextSpan(text: 'Website:\n', style: TextUtils.small1(context: context)));
+        spans.add(TextSpan(
+            text: 'Website:\n', style: TextUtils.small1(context: context)));
         spans.add(
           TextSpan(
             text: url,
@@ -320,14 +555,16 @@ class _SaunaPlaceDetailsPageState extends State<SaunaPlaceDetailsPage> {
               color: Colors.blue,
               decoration: TextDecoration.none,
             ),
-            recognizer: TapGestureRecognizer()
-              ..onTap = () => _launchUrl(url),
+            recognizer: TapGestureRecognizer()..onTap = () => _launchUrl(url),
           ),
         );
-        spans.add(TextSpan(text: '\n', style: TextUtils.small1(context: context))); // Add extra line break
+        spans.add(TextSpan(
+            text: '\n',
+            style: TextUtils.small1(context: context))); // Add extra line break
       } else if (line.contains('Instagram:')) {
         final username = line.split('Instagram:')[1].trim();
-        spans.add(TextSpan(text: 'Instagram:\n', style: TextUtils.small1(context: context)));
+        spans.add(TextSpan(
+            text: 'Instagram:\n', style: TextUtils.small1(context: context)));
         spans.add(
           TextSpan(
             text: username,
@@ -340,7 +577,6 @@ class _SaunaPlaceDetailsPageState extends State<SaunaPlaceDetailsPage> {
               ..onTap = () => _launchInstagram(username),
           ),
         );
-        
       } else {
         spans.add(TextSpan(
           text: '$line\n',

@@ -18,116 +18,95 @@ class DiscoverPageButtons extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Positioned(
-      right: 15.w,
-      bottom: 25.h,
-      child: GetBuilder<MapController>(builder: (mc) {
-        return Column(
+    return GetBuilder<MapController>(builder: (mc) {
+      return Positioned(
+        right: 16.w,
+        bottom: mc.selectedSauna != null ? 345.h : (mc.showBottomNav ? 80.h : 180.h), // Adjusted bottom padding
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            //=================================
             // Show cards button
-            //=================================
             if (mc.placesList.isNotEmpty)
-              IconButton(
-                  onPressed: () async {
-                    mc.setShowHorizontalCard(true);
-                  },
-                  icon: Container(
-                    padding: EdgeInsets.all(19.sp),
-                    decoration: BoxDecoration(
-                        boxShadow: [bigShadow],
-                        color: Pallete.whiteColor,
-                        borderRadius: BorderRadius.circular(100)),
-                    child: Icon(
-                      Icons.photo_camera_back_outlined,
-                      color: Colors.grey[800],
-                      size: 25.h,
-                    ),
-                  )),
-
-            //=================================
-            // my location button
-            //=================================
-            IconButton(
+              _buildFloatingButton(
                 onPressed: () async {
-                  final mc = Get.find<MapController>();
-                  final position = await mc.getCurrentLocation();
-                  if (position != null) {
-                    await mc.moveCamera(
-                      LatLng(position.latitude, position.longitude),
-                      zoom: 15,
-                    );
-                    // Add current location marker
-                    mc.addCurrentPlaceMarker(
-                      lat: position.latitude,
-                      long: position.longitude,
-                      title: 'Your Location',
-                    );
-                  } else {
-                    showSnackBar(context, 'Could not get current location', Colors.red);
-                  }
+                  mc.setShowHorizontalCard(true);
                 },
-                icon: Container(
-                  padding: EdgeInsets.all(19.sp),
-                  decoration: BoxDecoration(
-                    boxShadow: [bigShadow],
-                    color: Pallete.whiteColor,
-                    borderRadius: BorderRadius.circular(100),
-                  ),
-                  child: Icon(
-                    Icons.gps_fixed,
-                    color: Colors.grey[800],
-                    size: 25.h,
-                  ),
-                ),
+                icon: Icons.photo_camera_back_outlined,
+                tooltip: 'View Sauna Cards',
               ),
 
-            gapH(12),
+            SizedBox(height: 12.h),
 
-            //=================================
-            // add place button
-            //=================================
-            InkWell(
-              onTap: () {
+            // My location button
+            _buildFloatingButton(
+              onPressed: () async {
+                final mc = Get.find<MapController>();
+                final position = await mc.getCurrentLocation();
+                if (position != null) {
+                  await mc.moveCamera(
+                    LatLng(position.latitude, position.longitude),
+                    zoom: 15,
+                  );
+                  mc.addCurrentPlaceMarker(
+                    lat: position.latitude,
+                    long: position.longitude,
+                    title: 'Your Location',
+                  );
+                } else {
+                  showSnackBar(context, 'Could not get current location', Colors.red);
+                }
+              },
+              icon: Icons.gps_fixed,
+              tooltip: 'My Location',
+            ),
+
+            SizedBox(height: 12.h),
+
+            // Add place button
+            _buildFloatingButton(
+              onPressed: () {
                 final pc = Get.find<ProfileController>();
                 if (!pc.isLoggedIn) {
-                  showSnackBar(
-                      context, 'Please login to add place', Colors.red);
+                  showSnackBar(context, 'Please login to add place', Colors.red);
                   return;
                 }
-
                 mc.keepMarkersToTemp();
                 mc.setShowBottomNav(true);
               },
-              child: Container(
-                  height: 55.h,
-                  width: 200.w,
-                  alignment: Alignment.center,
-                  padding: EdgeInsets.symmetric(horizontal: 20.w),
-                  decoration: BoxDecoration(
-                      color: Pallete.whiteColor,
-                      borderRadius: BorderRadius.circular(100)),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.add_circle_outline,
-                        color: Pallete.backgroundColor,
-                      ),
-                      gapW(10),
-                      Text(
-                        'Add Location',
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleMedium
-                            ?.copyWith(color: Pallete.backgroundColor),
-                      )
-                    ],
-                  )),
+              icon: Icons.add_location_alt_outlined,
+              tooltip: 'Add New Location',
+              isLarge: true,
+              backgroundColor: Pallete.primarColor,
+              iconColor: Colors.white,
             ),
           ],
-        );
-      }),
+        ),
+      );
+    });
+  }
+
+  Widget _buildFloatingButton({
+    required VoidCallback onPressed,
+    required IconData icon,
+    required String tooltip,
+    bool isLarge = false,
+    Color? backgroundColor,
+    Color? iconColor,
+  }) {
+    return Container(
+      margin: EdgeInsets.only(bottom: 4.h),
+      child: FloatingActionButton(
+        onPressed: onPressed,
+        tooltip: tooltip,
+        elevation: 4,
+        backgroundColor: backgroundColor ?? Colors.white,
+        mini: !isLarge,
+        child: Icon(
+          icon,
+          color: iconColor ?? Colors.grey[800],
+          size: isLarge ? 28.sp : 24.sp,
+        ),
+      ),
     );
   }
 }
