@@ -196,42 +196,74 @@ class AddSaunaPlaceController extends GetxController {
   }) async {
     setLoadingTrue();
 
-    final user = await dbClient.auth.getUser();
-
     try {
+      // Validate user is logged in
+      final user = await dbClient.auth.getUser();
+      if (user.user == null) {
+        showSnackBar(context, 'Please log in to add a sauna location', Colors.orange);
+        return;
+      }
+
+      // Validate coordinates
+      if (lattitude == 0.0 || longitude == 0.0) {
+        showSnackBar(context, 'Please select a valid location on the map', Colors.orange);
+        return;
+      }
+
+      // Validate address
+      if (markedPlaceAddressController.text.trim().isEmpty) {
+        showSnackBar(context, 'Please enter a valid address', Colors.orange);
+        return;
+      }
+
+      // Collect selected types
       List selecteWildTypes = [];
       List selecteCommercialTypes = [];
       List selecteNearbyServices = [];
       List selecteNearbyActivities = [];
 
-      //select wild type
+      // Get wild types
       for (var i = 0; i < placeWildTypeList.length; i++) {
         if (placeWildTypeList[i].selected) {
           selecteWildTypes.add(placeWildTypeList[i].name);
         }
       }
 
-      //select commercial type
+      // Get commercial types
       for (var i = 0; i < placeCommercialTypeList.length; i++) {
         if (placeCommercialTypeList[i].selected) {
           selecteCommercialTypes.add(placeCommercialTypeList[i].name);
         }
       }
 
-      //select nearby service
+      // Validate at least one type is selected
+      if (selecteWildTypes.isEmpty && selecteCommercialTypes.isEmpty) {
+        showSnackBar(context, 'Please select at least one sauna type (Wild or Commercial)', Colors.orange);
+        return;
+      }
+
+      // Get nearby services
       for (var i = 0; i < nearbyServicesList.length; i++) {
         if (nearbyServicesList[i].selected) {
           selecteNearbyServices.add(nearbyServicesList[i].name);
         }
       }
 
-      //select nearby activities
+      // Get nearby activities
       for (var i = 0; i < nearbyActivitiesList.length; i++) {
         if (nearbyActivitiesList[i].selected) {
           selecteNearbyActivities.add(nearbyActivitiesList[i].name);
         }
       }
 
+      // Validate commercial phone if commercial type selected
+      if (selecteCommercialTypes.isNotEmpty && 
+          commercialPhoneController.text.trim().isEmpty) {
+        showSnackBar(context, 'Please enter a phone number for commercial sauna', Colors.orange);
+        return;
+      }
+
+      // Insert sauna location
       final response = await dbClient.from('sauna_locations').insert({
         'user_id': user.user?.id ?? 0,
         'latitude': lattitude,
@@ -252,28 +284,48 @@ class AddSaunaPlaceController extends GetxController {
                 : commercialPhoneController.text,
       }).select();
 
+      // Handle image upload if provided
       if (imageFile != null) {
-        final data = SaunaPlaceModel.fromJson(response.first);
-        final imgLink = await uploadImgToDb(
-            imageFile: imageFile, imageName: "${data.id}-${DateTime.now()}");
+        try {
+          final data = SaunaPlaceModel.fromJson(response.first);
+          final imgLink = await uploadImgToDb(
+              imageFile: imageFile, imageName: "${data.id}-${DateTime.now()}");
 
-        await dbClient.from('sauna_locations').update({
-          'img_links': [imgLink],
-        }).eq('id', data.id);
+          await dbClient.from('sauna_locations').update({
+            'img_links': [imgLink],
+          }).eq('id', data.id);
+        } catch (e) {
+          print('Error uploading image: $e');
+          showSnackBar(context, 'Sauna added but image upload failed', Colors.orange);
+        }
       }
 
+      // Success handling
       Get.find<MapController>().setShowBottomNav(false);
       setFiltersToDefault();
       Get.find<MapController>().getSaunaPlacesOnMap(context);
       Get.offAll(const PlaceAddedSuccessPage());
-      await sendEmail(
-          toEmail: AdminConst.adminEmail,
-          subject: "New place added",
-          emailText:
-              'Someone added a new place on map and its pending. Go to the admin panel to review');
+      
+      // Notify admin
+      try {
+        await sendEmail(
+            toEmail: AdminConst.adminEmail,
+            subject: "New place added",
+            emailText:
+                'Someone added a new place on map and its pending. Go to the admin panel to review');
+      } catch (e) {
+        print('Error sending admin notification: $e');
+      }
+
     } catch (e) {
-      showSnackBar(context, 'Something went wrong', Pallete.redColor);
-      print(e);
+      print('Error adding sauna: $e');
+      if (e.toString().contains('auth')) {
+        showSnackBar(context, 'Authentication error. Please log in again', Colors.red);
+      } else if (e.toString().contains('network')) {
+        showSnackBar(context, 'Network error. Please check your connection', Colors.red);
+      } else {
+        showSnackBar(context, 'Error adding sauna. Please try again', Colors.red);
+      }
     } finally {
       setLoadingFalse();
     }

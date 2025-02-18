@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'dart:async';  
+import 'dart:async';
 import 'package:portasauna/core/bindings/init_dependencies.dart';
 import 'package:portasauna/core/theme/pallete.dart';
 import 'package:portasauna/core/widgets/show_snackbar.dart';
@@ -22,9 +22,9 @@ import 'dart:math' as math;
 import 'package:portasauna/features/discover/widgets/discover_page_filter_content.dart';
 
 class MapController extends GetxController {
-  GoogleMapController? controller;  
+  GoogleMapController? controller;
   final searchController = TextEditingController();
-  final controllerReady = false.obs;  
+  final controllerReady = false.obs;
   bool showSearchAreaButton = false;
   bool isLoading = false;
   LatLngCustomModel? selectedPlaceLatLong;
@@ -113,7 +113,12 @@ class MapController extends GetxController {
     update();
   }
 
-  addOneMarker({required double lat, required double long, String? title, String? subtitle, String? saunaType}) async {
+  addOneMarker(
+      {required double lat,
+      required double long,
+      String? title,
+      String? subtitle,
+      String? saunaType}) async {
     try {
       if (!isValidCoordinate(lat, long)) {
         print('Invalid coordinates: $lat, $long');
@@ -127,16 +132,17 @@ class MapController extends GetxController {
 
       markers.add(
         Marker(
-          markerId: MarkerId('new_marker_${DateTime.now().millisecondsSinceEpoch}'),
+          markerId:
+              MarkerId('new_marker_${DateTime.now().millisecondsSinceEpoch}'),
           position: LatLng(lat, long),
           icon: customIcon,
           consumeTapEvents: true,
         ),
       );
-      
+
       markerPlacedOnMap = true;
       update();
-      
+
       // Move camera to the new marker
       await moveCamera(LatLng(lat, long), zoom: 15);
     } catch (e) {
@@ -144,7 +150,11 @@ class MapController extends GetxController {
     }
   }
 
-  addCurrentPlaceMarker({required double lat, required double long, String? title, String? subtitle}) async {
+  addCurrentPlaceMarker(
+      {required double lat,
+      required double long,
+      String? title,
+      String? subtitle}) async {
     if (!isValidCoordinate(lat, long)) {
       print('Invalid coordinates for current location: $lat, $long');
       return;
@@ -168,13 +178,15 @@ class MapController extends GetxController {
     for (int i = 0; i < placesList.length; i++) {
       if (placesList[i].lattitude != null && placesList[i].longitude != null) {
         // Determine if it's a free or commercial sauna
-        bool isFree = placesList[i].selectedWildType != null && 
-                     placesList[i].selectedWildType!.isNotEmpty;
-        
+        bool isFree = placesList[i].selectedWildType != null &&
+            placesList[i].selectedWildType!.isNotEmpty;
+
         final customIcon = await CustomMarkerHelper.createCustomMarker(
-          color: isFree ? const Color(0xFF5ce65c) : Colors.blue, // Green for free, blue for commercial
+          color: isFree
+              ? const Color(0xFF5ce65c)
+              : Colors.blue, // Green for free, blue for commercial
         );
-        
+
         markers.add(
           Marker(
             markerId: MarkerId(placesList[i].id.toString()),
@@ -200,7 +212,7 @@ class MapController extends GetxController {
   CameraPosition cameraPosition({double? zoom, double? lat, double? long}) {
     final latitude = lat ?? defaultLat;
     final longitude = long ?? defaultLong;
-    
+
     return CameraPosition(
       target: LatLng(latitude, longitude),
       zoom: zoom ?? 15,
@@ -211,10 +223,8 @@ class MapController extends GetxController {
     if (controller != null) {
       final bounds = await controller!.getVisibleRegion();
       // Get center point of visible region
-      return LatLng(
-        (bounds.northeast.latitude + bounds.southwest.latitude) / 2,
-        (bounds.northeast.longitude + bounds.southwest.longitude) / 2
-      );
+      return LatLng((bounds.northeast.latitude + bounds.southwest.latitude) / 2,
+          (bounds.northeast.longitude + bounds.southwest.longitude) / 2);
     }
     return LatLng(defaultLat, defaultLong);
   }
@@ -255,7 +265,7 @@ class MapController extends GetxController {
       makeSuggestedPlaceEmpty();
       return;
     }
-    
+
     showSearchAreaButton = false;
     suggestedPlaces = [];
     update();
@@ -273,7 +283,9 @@ class MapController extends GetxController {
   }
 
   Future<bool> moveCameraToPlace(BuildContext context,
-      {required String placeName, bool animateCamera = true, bool clearMarkers = false}) async {
+      {required String placeName,
+      bool animateCamera = true,
+      bool clearMarkers = false}) async {
     try {
       if (clearMarkers) {
         markers.clear();
@@ -338,14 +350,14 @@ class MapController extends GetxController {
     this.controller = controller;
     controllerReady.value = true;
     update();
-    
+
     // Load nearby sauna places
     await getSaunaPlacesOnMap(Get.context!);
   }
 
   // Selected sauna for showing in bottom card
   SaunaPlaceModel? selectedSauna;
-  
+
   void setSelectedSauna(SaunaPlaceModel? sauna) {
     selectedSauna = sauna;
     if (sauna != null) {
@@ -379,7 +391,8 @@ class MapController extends GetxController {
             onPressed: () async {
               await Geolocator.openLocationSettings();
             },
-            child: const Text('OPEN SETTINGS', style: TextStyle(color: Colors.white)),
+            child: const Text('OPEN SETTINGS',
+                style: TextStyle(color: Colors.white)),
           ),
         );
         return null;
@@ -411,7 +424,8 @@ class MapController extends GetxController {
             onPressed: () async {
               await Geolocator.openAppSettings();
             },
-            child: const Text('OPEN SETTINGS', style: TextStyle(color: Colors.white)),
+            child: const Text('OPEN SETTINGS',
+                style: TextStyle(color: Colors.white)),
           ),
         );
         return null;
@@ -441,19 +455,17 @@ class MapController extends GetxController {
 
   void addSaunaMarker(SaunaPlaceModel sauna) async {
     try {
-      if (!isValidCoordinate(
-        double.tryParse(sauna.lattitude.toString()),
-        double.tryParse(sauna.longitude.toString())
-      )) {
+      if (!isValidCoordinate(double.tryParse(sauna.lattitude.toString()),
+          double.tryParse(sauna.longitude.toString()))) {
         print('Invalid coordinates for sauna: ${sauna.id}');
         return;
       }
 
-      bool isFree = sauna.selectedWildType != null && 
-                    sauna.selectedWildType!.isNotEmpty;
-      String? locationType = isFree ? 
-          sauna.selectedWildType?.first : 
-          sauna.selectedCommercialType?.first;
+      bool isFree =
+          sauna.selectedWildType != null && sauna.selectedWildType!.isNotEmpty;
+      String? locationType = isFree
+          ? sauna.selectedWildType?.first
+          : sauna.selectedCommercialType?.first;
 
       final customIcon = await CustomMarkerHelper.createCustomMarker(
         color: isFree ? const Color(0xFF5ce65c) : Colors.blue,
@@ -479,7 +491,8 @@ class MapController extends GetxController {
     }
   }
 
-  Future<void> getSaunaPlacesOnMap(BuildContext context, {bool addCurrentLocation = false}) async {
+  Future<void> getSaunaPlacesOnMap(BuildContext context,
+      {bool addCurrentLocation = false}) async {
     try {
       if (controller == null) {
         print('Map controller not initialized');
@@ -501,11 +514,12 @@ class MapController extends GetxController {
             .lte('longitude', bounds.northeast.longitude);
 
         placesList.clear();
-        
+
         if (addCurrentLocation) {
           final position = await getCurrentLocation();
           if (position != null) {
-            final currentLocationIcon = await CustomMarkerHelper.createCustomMarker(
+            final currentLocationIcon =
+                await CustomMarkerHelper.createCustomMarker(
               color: Colors.red,
             );
             markers.add(
@@ -532,10 +546,12 @@ class MapController extends GetxController {
         if (placesList.isNotEmpty) {
           setShowHorizontalCard(true);
           print('✅ Successfully loaded ${placesList.length} saunas');
-          showSnackBar(context, 'Found ${placesList.length} saunas in this area', Colors.green);
+          showSnackBar(context,
+              'Found ${placesList.length} saunas in this area', Colors.green);
         } else {
           setShowHorizontalCard(false);
-          showSnackBar(context, 'No sauna spots found in this area', Colors.orange);
+          showSnackBar(
+              context, 'No sauna spots found in this area', Colors.orange);
         }
       } catch (e) {
         print('Error fetching sauna places: $e');
@@ -553,26 +569,26 @@ class MapController extends GetxController {
   Future<void> searchInCurrentArea(BuildContext context) async {
     try {
       setLoadingTrue();
-      
+
       // Get the current visible region bounds
       if (controller != null) {
         final bounds = await controller!.getVisibleRegion();
         _lastSearchBounds = bounds;
-        
+
         // Find saunas in this area
         await Get.find<FindNearSaunaController>().findNearSaunas(
           lat: bounds.northeast.latitude,
           long: bounds.northeast.longitude,
           radius: calculateRadius(bounds),
         );
-        
+
         // Update markers on the map
         await addMultipleMarkers();
-        
+
         // Show the horizontal cards
         setShowHorizontalCard(true);
       }
-      
+
       setLoadingFalse();
       showSearchAreaButton = false;
       update();
@@ -586,13 +602,14 @@ class MapController extends GetxController {
   double calculateRadius(LatLngBounds bounds) {
     final ne = bounds.northeast;
     final sw = bounds.southwest;
-    
+
     // Calculate the diagonal distance in kilometers
     final latDiff = (ne.latitude - sw.latitude).abs();
     final lngDiff = (ne.longitude - sw.longitude).abs();
-    
+
     // Use the larger difference to ensure we cover the visible area
-    return math.max(latDiff, lngDiff) * 111.0; // Convert degrees to kilometers (approx)
+    return math.max(latDiff, lngDiff) *
+        111.0; // Convert degrees to kilometers (approx)
   }
 
   void showSaunaDetails(SaunaPlaceModel sauna) {
@@ -656,10 +673,14 @@ class MapController extends GetxController {
     if (_lastSearchBounds == null) return false;
 
     const tolerance = 0.001; // About 100 meters tolerance
-    return (northeast.latitude - _lastSearchBounds!.northeast.latitude).abs() < tolerance &&
-           (northeast.longitude - _lastSearchBounds!.northeast.longitude).abs() < tolerance &&
-           (southwest.latitude - _lastSearchBounds!.southwest.latitude).abs() < tolerance &&
-           (southwest.longitude - _lastSearchBounds!.southwest.longitude).abs() < tolerance;
+    return (northeast.latitude - _lastSearchBounds!.northeast.latitude).abs() <
+            tolerance &&
+        (northeast.longitude - _lastSearchBounds!.northeast.longitude).abs() <
+            tolerance &&
+        (southwest.latitude - _lastSearchBounds!.southwest.latitude).abs() <
+            tolerance &&
+        (southwest.longitude - _lastSearchBounds!.southwest.longitude).abs() <
+            tolerance;
   }
 
   Future<void> launchMapsUrl(double lat, double lng) async {
@@ -678,18 +699,18 @@ class MapController extends GetxController {
 
   Future<BitmapDescriptor> createCustomMarkerBitmap() async {
     const double size = 120; // Size of the marker icon
-    
+
     final PictureRecorder pictureRecorder = PictureRecorder();
     final Canvas canvas = Canvas(pictureRecorder);
     final Paint paint = Paint()..color = Colors.blue; // Solid blue color
-    
+
     // Draw circle background
     canvas.drawCircle(
       const Offset(size / 2, size / 2),
       size / 2,
       paint,
     );
-    
+
     // Add text "S"
     const TextSpan span = TextSpan(
       text: 'S',
@@ -699,13 +720,13 @@ class MapController extends GetxController {
         fontWeight: FontWeight.bold,
       ),
     );
-    
+
     final TextPainter painter = TextPainter(
       text: span,
       textAlign: TextAlign.center,
       textDirection: TextDirection.ltr,
     );
-    
+
     painter.layout();
     painter.paint(
       canvas,
@@ -714,13 +735,13 @@ class MapController extends GetxController {
         (size - painter.height) / 2,
       ),
     );
-    
+
     final image = await pictureRecorder.endRecording().toImage(
-      size.toInt(),
-      size.toInt(),
-    );
+          size.toInt(),
+          size.toInt(),
+        );
     final byteData = await image.toByteData(format: ImageByteFormat.png);
-    
+
     return BitmapDescriptor.fromBytes(byteData!.buffer.asUint8List());
   }
 

@@ -235,4 +235,54 @@ class FindNearSaunaController extends GetxController {
       setLoadingFalse();
     }
   }
+
+  //==================>
+  //Find saunas in a specific area
+  //==================>
+  Future<void> findNearSaunas({
+    required double lat,
+    required double long,
+    required double radius,
+  }) async {
+    try {
+      print('🔍 Finding saunas near: $lat, $long with radius: $radius km');
+      setLoadingTrue();
+      nearestSaunas.clear();
+
+      // Convert radius from km to degrees (approximate)
+      final degreeRadius = radius / 111.0;
+      
+      final response = await dbClient
+          .from('sauna_locations')
+          .select()
+          .gte('latitude', lat - degreeRadius)
+          .lte('latitude', lat + degreeRadius)
+          .gte('longitude', long - degreeRadius)
+          .lte('longitude', long + degreeRadius)
+          .eq('is_approved', true);
+
+      if (response != null) {
+        for (var place in response) {
+          try {
+            final saunaPlace = SaunaPlaceModel.fromJson(place);
+            nearestSaunas.add(saunaPlace);
+          } catch (e) {
+            print('Error processing sauna place: $e');
+          }
+        }
+      }
+
+      // Update the map controller's places list
+      final mc = Get.find<MapController>();
+      mc.placesList.clear();
+      mc.placesList.addAll(nearestSaunas);
+      
+      setLoadingFalse();
+      update();
+    } catch (e) {
+      setLoadingFalse();
+      print('Error finding nearby saunas: $e');
+      rethrow;
+    }
+  }
 }
